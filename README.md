@@ -2,7 +2,7 @@
 
 # GET SHIT DONE
 
-**A light-weight and powerful meta-prompting, context engineering and spec-driven development system for Claude Code and OpenCode.**
+**A light-weight and powerful meta-prompting, context engineering and spec-driven development system for Claude Code, OpenCode, and Cursor IDE.**
 
 **Solves context rot — the quality degradation that happens as Claude fills its context window.**
 
@@ -52,7 +52,7 @@ So I built GSD. The complexity is in the system, not in your workflow. Behind th
 
 The system gives Claude everything it needs to do the work *and* verify it. I trust the workflow. It just does a good job.
 
-That's what this is. No enterprise roleplay bullshit. Just an incredibly effective system for building cool stuff consistently using Claude Code.
+That's what this is. No enterprise roleplay bullshit. Just an incredibly effective system for building cool stuff consistently using Claude Code, OpenCode, or Cursor IDE.
 
 — **TÂCHES**
 
@@ -60,7 +60,7 @@ That's what this is. No enterprise roleplay bullshit. Just an incredibly effecti
 
 Vibecoding has a bad reputation. You describe what you want, AI generates code, and you get inconsistent garbage that falls apart at scale.
 
-GSD fixes that. It's the context engineering layer that makes Claude Code reliable. Describe your idea, let the system extract everything it needs to know, and let Claude Code get to work.
+GSD fixes that. It's the context engineering layer that makes AI-assisted development reliable. Describe your idea, let the system extract everything it needs to know, and let your AI assistant get to work.
 
 ---
 
@@ -77,10 +77,10 @@ npx get-shit-done-cc
 ```
 
 The installer prompts you to choose:
-1. **Runtime** — Claude Code, OpenCode, or both
+1. **Runtime** — Claude Code, OpenCode, Cursor IDE, or both (Claude + OpenCode)
 2. **Location** — Global (all projects) or local (current project only)
 
-Verify with `/gsd:help` inside your Claude Code or OpenCode interface.
+Verify with `/gsd:help` (Claude Code), `/gsd-help` (OpenCode), or `/gsd/help` (Cursor IDE).
 
 ### Staying Updated
 
@@ -99,14 +99,18 @@ npx get-shit-done-cc --claude --global   # Install to ~/.claude/
 npx get-shit-done-cc --claude --local    # Install to ./.claude/
 
 # OpenCode (open source, free models)
-npx get-shit-done-cc --opencode --global # Install to ~/.opencode/
+npx get-shit-done-cc --opencode --global # Install to ~/.config/opencode/
 
-# Both runtimes
+# Cursor IDE
+npx get-shit-done-cc --cursor --global   # Install to ~/.cursor/
+npx get-shit-done-cc --cursor --local    # Install to ./.cursor/
+
+# Both runtimes (Claude Code + OpenCode)
 npx get-shit-done-cc --both --global     # Install to both directories
 ```
 
 Use `--global` (`-g`) or `--local` (`-l`) to skip the location prompt.
-Use `--claude`, `--opencode`, or `--both` to skip the runtime prompt.
+Use `--claude`, `--opencode`, `--cursor`, or `--both` to skip the runtime prompt.
 
 </details>
 
@@ -173,7 +177,7 @@ If you prefer not to use that flag, add this to your project's `.claude/settings
 
 ## How It Works
 
-> **Already have code?** Run `/gsd:map-codebase` first. It spawns parallel agents to analyze your stack, architecture, conventions, and concerns. Then `/gsd:new-project` knows your codebase — questions focus on what you're adding, and planning automatically loads your patterns.
+> **Already have code?** Run `/gsd:map-codebase` (Claude Code), `/gsd-map-codebase` (OpenCode), or `/gsd/map-codebase` (Cursor IDE) first. It spawns parallel agents to analyze your stack, architecture, conventions, and concerns. Then `/gsd:new-project` knows your codebase — questions focus on what you're adding, and planning automatically loads your patterns.
 
 ### 1. Initialize Project
 

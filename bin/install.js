@@ -21,6 +21,7 @@ const hasGlobal = args.includes('--global') || args.includes('-g');
 const hasLocal = args.includes('--local') || args.includes('-l');
 const hasOpencode = args.includes('--opencode');
 const hasClaude = args.includes('--claude');
+const hasCursor = args.includes('--cursor');
 const hasBoth = args.includes('--both');
 const hasUninstall = args.includes('--uninstall') || args.includes('-u');
 
@@ -32,11 +33,15 @@ if (hasBoth) {
   selectedRuntimes = ['opencode'];
 } else if (hasClaude) {
   selectedRuntimes = ['claude'];
+} else if (hasCursor) {
+  selectedRuntimes = ['cursor'];
 }
 
 // Helper to get directory name for a runtime (used for local/project installs)
 function getDirName(runtime) {
-  return runtime === 'opencode' ? '.opencode' : '.claude';
+  if (runtime === 'opencode') return '.opencode';
+  if (runtime === 'cursor') return '.cursor';
+  return '.claude';
 }
 
 /**
@@ -65,8 +70,23 @@ function getOpencodeGlobalDir() {
 }
 
 /**
+ * Get the global config directory for Cursor
+ * Cursor uses ~/.cursor/ for global config
+ * Priority: CURSOR_CONFIG_DIR > ~/.cursor
+ */
+function getCursorGlobalDir() {
+  // 1. Explicit CURSOR_CONFIG_DIR env var
+  if (process.env.CURSOR_CONFIG_DIR) {
+    return expandTilde(process.env.CURSOR_CONFIG_DIR);
+  }
+  
+  // 2. Default: ~/.cursor
+  return path.join(os.homedir(), '.cursor');
+}
+
+/**
  * Get the global config directory for a runtime
- * @param {string} runtime - 'claude' or 'opencode'
+ * @param {string} runtime - 'claude', 'opencode', or 'cursor'
  * @param {string|null} explicitDir - Explicit directory from --config-dir flag
  */
 function getGlobalDir(runtime, explicitDir = null) {
@@ -76,6 +96,14 @@ function getGlobalDir(runtime, explicitDir = null) {
       return expandTilde(explicitDir);
     }
     return getOpencodeGlobalDir();
+  }
+  
+  if (runtime === 'cursor') {
+    // For Cursor, --config-dir overrides env vars
+    if (explicitDir) {
+      return expandTilde(explicitDir);
+    }
+    return getCursorGlobalDir();
   }
   
   // Claude Code: --config-dir > CLAUDE_CONFIG_DIR > ~/.claude
@@ -98,7 +126,7 @@ ${cyan}   ██████╗ ███████╗██████╗
 
   Get Shit Done ${dim}v${pkg.version}${reset}
   A meta-prompting, context engineering and spec-driven
-  development system for Claude Code (and opencode) by TÂCHES.
+  development system for Claude Code, OpenCode, and Cursor by TÂCHES.
 `;
 
 // Parse --config-dir argument
@@ -140,6 +168,7 @@ if (hasHelp) {
     ${cyan}-l, --local${reset}               Install locally (to current directory)
     ${cyan}--claude${reset}                  Install for Claude Code only
     ${cyan}--opencode${reset}                Install for OpenCode only
+    ${cyan}--cursor${reset}                  Install for Cursor IDE only
     ${cyan}--both${reset}                    Install for both Claude Code and OpenCode
     ${cyan}-u, --uninstall${reset}           Uninstall GSD (remove all GSD files)
     ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory
@@ -156,6 +185,9 @@ if (hasHelp) {
     ${dim}# Install for OpenCode globally${reset}
     npx get-shit-done-cc --opencode --global
 
+    ${dim}# Install for Cursor IDE globally${reset}
+    npx get-shit-done-cc --cursor --global
+
     ${dim}# Install for both runtimes globally${reset}
     npx get-shit-done-cc --both --global
 
@@ -167,6 +199,9 @@ if (hasHelp) {
 
     ${dim}# Uninstall GSD from Claude Code globally${reset}
     npx get-shit-done-cc --claude --global --uninstall
+
+    ${dim}# Uninstall GSD from Cursor IDE globally${reset}
+    npx get-shit-done-cc --cursor --global --uninstall
 
     ${dim}# Uninstall GSD from current project${reset}
     npx get-shit-done-cc --claude --local --uninstall
@@ -269,6 +304,36 @@ function convertToolName(claudeTool) {
   }
   // Default: convert to lowercase
   return claudeTool.toLowerCase();
+}
+
+/**
+ * Convert Claude Code format to Cursor format
+ * Cursor commands use plain Markdown with NO YAML frontmatter
+ * @param {string} content - Markdown file content with YAML frontmatter
+ * @returns {string} - Content with frontmatter removed
+ */
+function convertClaudeToCursorFormat(content) {
+  // Replace ALL path references (including in Task prompts, @-references, etc.)
+  let convertedContent = content;
+  // Replace ~/.claude/ with ~/.cursor/ (with trailing slash)
+  convertedContent = convertedContent.replace(/~\/\.claude\//g, '~/.cursor/');
+  // Replace ~/.claude at word boundaries (end of path, before newline, etc.)
+  convertedContent = convertedContent.replace(/~\/\.claude\b/g, '~/.cursor');
+  
+  // Check if content has frontmatter
+  if (!convertedContent.startsWith('---')) {
+    return convertedContent;
+  }
+
+  // Find the end of frontmatter
+  const endIndex = convertedContent.indexOf('---', 3);
+  if (endIndex === -1) {
+    return convertedContent;
+  }
+
+  // Remove frontmatter, keep only body
+  const body = convertedContent.substring(endIndex + 3).trim();
+  return body;
 }
 
 function convertClaudeToOpencodeFrontmatter(content) {
@@ -380,7 +445,7 @@ function convertClaudeToOpencodeFrontmatter(content) {
  * @param {string} destDir - Destination directory (e.g., command/)
  * @param {string} prefix - Prefix for filenames (e.g., 'gsd')
  * @param {string} pathPrefix - Path prefix for file references
- * @param {string} runtime - Target runtime ('claude' or 'opencode')
+ * @param {string} runtime - Target runtime ('claude', 'opencode', or 'cursor')
  */
 function copyFlattenedCommands(srcDir, destDir, prefix, pathPrefix, runtime) {
   if (!fs.existsSync(srcDir)) {
@@ -418,10 +483,16 @@ function copyFlattenedCommands(srcDir, destDir, prefix, pathPrefix, runtime) {
       // Replace path references
       const claudeDirRegex = /~\/\.claude\//g;
       const opencodeDirRegex = /~\/\.opencode\//g;
+      const cursorDirRegex = /~\/\.cursor\//g;
       content = content.replace(claudeDirRegex, pathPrefix);
       content = content.replace(opencodeDirRegex, pathPrefix);
-      // Convert frontmatter for opencode compatibility
-      content = convertClaudeToOpencodeFrontmatter(content);
+      content = content.replace(cursorDirRegex, pathPrefix);
+      // Convert format based on runtime
+      if (runtime === 'opencode') {
+        content = convertClaudeToOpencodeFrontmatter(content);
+      } else if (runtime === 'cursor') {
+        content = convertClaudeToCursorFormat(content);
+      }
       
       fs.writeFileSync(destPath, content);
     }
@@ -434,10 +505,11 @@ function copyFlattenedCommands(srcDir, destDir, prefix, pathPrefix, runtime) {
  * @param {string} srcDir - Source directory
  * @param {string} destDir - Destination directory
  * @param {string} pathPrefix - Path prefix for file references
- * @param {string} runtime - Target runtime ('claude' or 'opencode')
+ * @param {string} runtime - Target runtime ('claude', 'opencode', or 'cursor')
  */
 function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime) {
   const isOpencode = runtime === 'opencode';
+  const isCursor = runtime === 'cursor';
   const dirName = getDirName(runtime);
 
   // Clean install: remove existing destination to prevent orphaned files
@@ -459,9 +531,17 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime) {
       let content = fs.readFileSync(srcPath, 'utf8');
       const claudeDirRegex = new RegExp(`~/${dirName.replace('.', '\\.')}/`, 'g');
       content = content.replace(claudeDirRegex, pathPrefix);
-      // Convert frontmatter for opencode compatibility
+      // Also replace ~/.claude/ (without trailing slash) for Cursor
+      if (isCursor) {
+        // Replace all instances of ~/.claude (with or without trailing slash)
+        content = content.replace(/~\/\.claude\//g, '~/.cursor/');
+        content = content.replace(/~\/\.claude\b/g, '~/.cursor');
+      }
+      // Convert format based on runtime
       if (isOpencode) {
         content = convertClaudeToOpencodeFrontmatter(content);
+      } else if (isCursor) {
+        content = convertClaudeToCursorFormat(content);
       }
       fs.writeFileSync(destPath, content);
     } else {
@@ -537,10 +617,11 @@ function cleanupOrphanedHooks(settings) {
  * Uninstall GSD from the specified directory for a specific runtime
  * Removes only GSD-specific files/directories, preserves user content
  * @param {boolean} isGlobal - Whether to uninstall from global or local
- * @param {string} runtime - Target runtime ('claude' or 'opencode')
+ * @param {string} runtime - Target runtime ('claude', 'opencode', or 'cursor')
  */
 function uninstall(isGlobal, runtime = 'claude') {
   const isOpencode = runtime === 'opencode';
+  const isCursor = runtime === 'cursor';
   const dirName = getDirName(runtime);
 
   // Get the target directory based on runtime and install type
@@ -552,7 +633,7 @@ function uninstall(isGlobal, runtime = 'claude') {
     ? targetDir.replace(os.homedir(), '~')
     : targetDir.replace(process.cwd(), '.');
 
-  const runtimeLabel = isOpencode ? 'OpenCode' : 'Claude Code';
+  const runtimeLabel = isOpencode ? 'OpenCode' : (isCursor ? 'Cursor IDE' : 'Claude Code');
   console.log(`  Uninstalling GSD from ${cyan}${runtimeLabel}${reset} at ${cyan}${locationLabel}${reset}\n`);
 
   // Check if target directory exists
@@ -579,7 +660,7 @@ function uninstall(isGlobal, runtime = 'claude') {
       console.log(`  ${green}✓${reset} Removed GSD commands from command/`);
     }
   } else {
-    // Claude Code: remove commands/gsd/ directory
+    // Claude Code and Cursor: remove commands/gsd/ directory
     const gsdCommandsDir = path.join(targetDir, 'commands', 'gsd');
     if (fs.existsSync(gsdCommandsDir)) {
       fs.rmSync(gsdCommandsDir, { recursive: true });
@@ -829,11 +910,12 @@ function verifyFileInstalled(filePath, description) {
 /**
  * Install to the specified directory for a specific runtime
  * @param {boolean} isGlobal - Whether to install globally or locally
- * @param {string} runtime - Target runtime ('claude' or 'opencode')
+ * @param {string} runtime - Target runtime ('claude', 'opencode', or 'cursor')
  */
 function install(isGlobal, runtime = 'claude') {
   const isOpencode = runtime === 'opencode';
-  const dirName = getDirName(runtime);  // .opencode or .claude (for local installs)
+  const isCursor = runtime === 'cursor';
+  const dirName = getDirName(runtime);  // .opencode, .claude, or .cursor (for local installs)
   const src = path.join(__dirname, '..');
 
   // Get the target directory based on runtime and install type
@@ -847,12 +929,12 @@ function install(isGlobal, runtime = 'claude') {
 
   // Path prefix for file references in markdown content
   // For global installs: use full path (necessary when config dir is customized)
-  // For local installs: use relative ./.opencode/ or ./.claude/
+  // For local installs: use relative ./.opencode/, ./.claude/, or ./.cursor/
   const pathPrefix = isGlobal
     ? `${targetDir}/`
     : `./${dirName}/`;
 
-  const runtimeLabel = isOpencode ? 'OpenCode' : 'Claude Code';
+  const runtimeLabel = isOpencode ? 'OpenCode' : (isCursor ? 'Cursor IDE' : 'Claude Code');
   console.log(`  Installing for ${cyan}${runtimeLabel}${reset} to ${cyan}${locationLabel}${reset}\n`);
 
   // Track installation failures
@@ -862,7 +944,7 @@ function install(isGlobal, runtime = 'claude') {
   cleanupOrphanedFiles(targetDir);
 
   // OpenCode uses 'command/' (singular) with flat structure: command/gsd-help.md
-  // Claude Code uses 'commands/' (plural) with nested structure: commands/gsd/help.md
+  // Claude Code and Cursor use 'commands/' (plural) with nested structure: commands/gsd/help.md
   if (isOpencode) {
     // OpenCode: flat structure in command/ directory
     const commandDir = path.join(targetDir, 'command');
@@ -878,7 +960,7 @@ function install(isGlobal, runtime = 'claude') {
       failures.push('command/gsd-*');
     }
   } else {
-    // Claude Code: nested structure in commands/ directory
+    // Claude Code and Cursor: nested structure in commands/ directory
     const commandsDir = path.join(targetDir, 'commands');
     fs.mkdirSync(commandsDir, { recursive: true });
     
@@ -925,9 +1007,12 @@ function install(isGlobal, runtime = 'claude') {
         let content = fs.readFileSync(path.join(agentsSrc, entry.name), 'utf8');
         const dirRegex = new RegExp(`~/${dirName.replace('.', '\\.')}/`, 'g');
         content = content.replace(dirRegex, pathPrefix);
-        // Convert frontmatter for opencode compatibility
+        // Convert format based on runtime
         if (isOpencode) {
           content = convertClaudeToOpencodeFrontmatter(content);
+        } else if (isCursor) {
+          // Cursor agents keep YAML frontmatter (unlike commands)
+          // Just update paths
         }
         fs.writeFileSync(path.join(agentsDest, entry.name), content);
       }
@@ -998,8 +1083,8 @@ function install(isGlobal, runtime = 'claude') {
     ? buildHookCommand(targetDir, 'gsd-check-update.js')
     : 'node ' + dirName + '/hooks/gsd-check-update.js';
 
-  // Configure SessionStart hook for update checking (skip for opencode - different hook system)
-  if (!isOpencode) {
+  // Configure SessionStart hook for update checking (skip for opencode and cursor - different hook systems)
+  if (!isOpencode && !isCursor) {
     if (!settings.hooks) {
       settings.hooks = {};
     }
@@ -1034,12 +1119,13 @@ function install(isGlobal, runtime = 'claude') {
  * @param {object} settings - Settings object
  * @param {string} statuslineCommand - Statusline command
  * @param {boolean} shouldInstallStatusline - Whether to install statusline
- * @param {string} runtime - Target runtime ('claude' or 'opencode')
+ * @param {string} runtime - Target runtime ('claude', 'opencode', or 'cursor')
  */
 function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallStatusline, runtime = 'claude') {
   const isOpencode = runtime === 'opencode';
+  const isCursor = runtime === 'cursor';
 
-  if (shouldInstallStatusline && !isOpencode) {
+  if (shouldInstallStatusline && !isOpencode && !isCursor) {
     settings.statusLine = {
       type: 'command',
       command: statuslineCommand
@@ -1055,8 +1141,8 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
     configureOpencodePermissions();
   }
 
-  const program = isOpencode ? 'OpenCode' : 'Claude Code';
-  const command = isOpencode ? '/gsd-help' : '/gsd:help';
+  const program = isOpencode ? 'OpenCode' : (isCursor ? 'Cursor IDE' : 'Claude Code');
+  const command = isOpencode ? '/gsd-help' : (isCursor ? '/gsd/help' : '/gsd:help');
   console.log(`
   ${green}Done!${reset} Launch ${program} and run ${cyan}${command}${reset}.
 
@@ -1121,7 +1207,7 @@ function handleStatusline(settings, isInteractive, callback) {
 }
 
 /**
- * Prompt for runtime selection (Claude Code / OpenCode / Both)
+ * Prompt for runtime selection (Claude Code / OpenCode / Cursor / Both)
  * @param {function} callback - Called with array of selected runtimes
  */
 function promptRuntime(callback) {
@@ -1144,17 +1230,20 @@ function promptRuntime(callback) {
 
   ${cyan}1${reset}) Claude Code ${dim}(~/.claude)${reset}
   ${cyan}2${reset}) OpenCode    ${dim}(~/.config/opencode)${reset} - open source, free models
-  ${cyan}3${reset}) Both
+  ${cyan}3${reset}) Cursor IDE  ${dim}(~/.cursor)${reset}
+  ${cyan}4${reset}) Both Claude Code and OpenCode
 `);
 
   rl.question(`  Choice ${dim}[1]${reset}: `, (answer) => {
     answered = true;
     rl.close();
     const choice = answer.trim() || '1';
-    if (choice === '3') {
+    if (choice === '4') {
       callback(['claude', 'opencode']);
     } else if (choice === '2') {
       callback(['opencode']);
+    } else if (choice === '3') {
+      callback(['cursor']);
     } else {
       callback(['claude']);
     }
@@ -1229,7 +1318,7 @@ function installAllRuntimes(runtimes, isGlobal, isInteractive) {
     results.push(result);
   }
 
-  // Handle statusline for Claude Code only (OpenCode uses themes)
+  // Handle statusline for Claude Code only (OpenCode and Cursor use different systems)
   const claudeResult = results.find(r => r.runtime === 'claude');
 
   if (claudeResult) {
@@ -1241,11 +1330,18 @@ function installAllRuntimes(runtimes, isGlobal, isInteractive) {
       if (opencodeResult) {
         finishInstall(opencodeResult.settingsPath, opencodeResult.settings, opencodeResult.statuslineCommand, false, 'opencode');
       }
+
+      // Finish Cursor install if present
+      const cursorResult = results.find(r => r.runtime === 'cursor');
+      if (cursorResult) {
+        finishInstall(cursorResult.settingsPath, cursorResult.settings, cursorResult.statuslineCommand, false, 'cursor');
+      }
     });
   } else {
-    // Only OpenCode
-    const opencodeResult = results[0];
-    finishInstall(opencodeResult.settingsPath, opencodeResult.settings, opencodeResult.statuslineCommand, false, 'opencode');
+    // No Claude Code - finish other runtimes
+    for (const result of results) {
+      finishInstall(result.settingsPath, result.settings, result.statuslineCommand, false, result.runtime);
+    }
   }
 }
 
