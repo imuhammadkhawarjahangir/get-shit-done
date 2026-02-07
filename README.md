@@ -77,10 +77,10 @@ npx get-shit-done-cc
 ```
 
 The installer prompts you to choose:
-1. **Runtime** — Claude Code, OpenCode, Gemini, or all
+1. **Runtime** — Claude Code, OpenCode, Gemini, Cursor, or all
 2. **Location** — Global (all projects) or local (current project only)
 
-Verify with `/gsd:help` inside your chosen runtime.
+Verify with `/gsd:help` (Claude/Gemini) or `/gsd-help` (OpenCode/Cursor) inside your chosen runtime.
 
 ### Staying Updated
 
@@ -104,12 +104,18 @@ npx get-shit-done-cc --opencode --global # Install to ~/.config/opencode/
 # Gemini CLI
 npx get-shit-done-cc --gemini --global   # Install to ~/.gemini/
 
+# Cursor (IDE + CLI)
+npx get-shit-done-cc --cursor --global   # Install to ~/.cursor/
+npx get-shit-done-cc --cursor --local    # Install to ./.cursor/
+
 # All runtimes
 npx get-shit-done-cc --all --global      # Install to all directories
 ```
 
 Use `--global` (`-g`) or `--local` (`-l`) to skip the location prompt.
-Use `--claude`, `--opencode`, `--gemini`, or `--all` to skip the runtime prompt.
+Use `--claude`, `--opencode`, `--gemini`, `--cursor`, or `--all` to skip the runtime prompt.
+
+**Cursor (IDE + CLI):** Commands appear as `/gsd-<name>` (e.g. `/gsd-new-project`, `/gsd-help`). Install globally to `~/.cursor/` or locally to `.cursor/` in your project. One install works in both **Cursor IDE** (chat slash commands) and **Cursor CLI** (`agent` in terminal).
 
 </details>
 
